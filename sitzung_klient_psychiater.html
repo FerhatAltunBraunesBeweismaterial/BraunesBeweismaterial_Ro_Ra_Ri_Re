@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Sitzung: Klient und Psychiater</title>
+<style>
+  :root{color-scheme:dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+  html,body{margin:0;height:100%;background:#07080c;overflow:hidden;font-family:system-ui,-apple-system,sans-serif;color:#e6e8ee}
+  canvas{display:block;touch-action:none}
+  #hud{position:fixed;left:8px;right:8px;top:calc(env(safe-area-inset-top,0px) + 6px);pointer-events:none;font-size:11px;line-height:1.35}
+  #title{font-size:13px;font-weight:600;margin-bottom:4px}
+  .cols{display:flex;gap:6px}
+  .card{flex:1;min-width:0;background:#0d1018cc;border:1px solid #ffffff22;border-radius:8px;padding:5px 7px;transition:border-color .4s}
+  .card.on{border-color:#ffffff88}
+  .card h3{margin:0 0 3px;font-size:12px;font-weight:600}
+  .lg div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.9}
+  .lg div:nth-child(2){opacity:.65}.lg div:nth-child(3){opacity:.45}.lg div:nth-child(4){opacity:.3}
+  .sp{margin-top:3px;opacity:.65;font-size:10px}
+  #status{position:fixed;left:10px;right:10px;bottom:calc(env(safe-area-inset-bottom,0px) + 26px);font-size:12px;pointer-events:none}
+  #hint{position:fixed;left:10px;bottom:calc(env(safe-area-inset-bottom,0px) + 22px);font-size:10px;opacity:.5;display:none}
+  #bar{position:fixed;left:10px;right:10px;bottom:calc(env(safe-area-inset-bottom,0px) + 12px);height:4px;background:#ffffff18;border-radius:2px}
+  #fill{height:100%;width:0;border-radius:2px;background:#fff}
+</style>
+</head>
+<body>
+<div id="hud">
+  <div id="title">Sitzung · Klient ↔ Psychiater · Thema: Ferhat Altun</div>
+  <div class="cols">
+    <div class="card" id="k0"><h3>Klient <span id="s0"></span></h3><div class="lg" id="l0"></div><div class="sp" id="p0"></div></div>
+    <div class="card" id="k1"><h3>Psychiater <span id="s1"></span></h3><div class="lg" id="l1"></div><div class="sp" id="p1"></div></div>
+  </div>
+</div>
+<div id="status">–</div>
+<div id="bar"><div id="fill"></div></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+const N=['Ro','Ra','Ri','Re'];
+const COL=[0xd9322f,0xf2f2f2,0xe8c93a,0x34b866];
+const HEX=c=>'#'+c.toString(16).padStart(6,'0');
+const H=1.05, WS=0.7, PY=2.55;
+const CL=[[-H,H],[H,H],[H,-H],[-H,-H]]; // Ro, Ra, Ri, Re (Ecken der Ebene)
+
+// ---- Kommandos nach dem Muster der CSV (je 100 pro Spalte) ----
+// ---- Frei gewählte Kommando-Mengen für die Sitzung ----
+const CMD=[
+ // Ro: Körperverhalten (part, Bewegung)
+ [{t:'Ro Kopf nicken',a:[['Kopf','Beugen']]},{t:'Ro Kopf schütteln',a:[['Kopf','Rotation_links']]},{t:'Ro Kopf zuwenden',a:[['Kopf','Rotation_rechts']]},
+  {t:'Ro Vorlehnen',a:[['Rumpf','Beugen']]},{t:'Ro Zurücklehnen',a:[['Rumpf','Strecken']]},{t:'Ro Rumpf drehen',a:[['Rumpf','Rotation_links']]},
+  {t:'Ro Schultern heben',a:[['Schulter_links','Translation_hoch'],['Schulter_rechts','Translation_hoch']]},
+  {t:'Ro Arme verschränken',a:[['Arm_links','Beugen'],['Arm_rechts','Beugen']]},{t:'Ro Hand heben',a:[['Hand_rechts','Translation_hoch'],['Arm_rechts','Beugen']]},
+  {t:'Ro Arm ausstrecken',a:[['Arm_rechts','Beugen'],['Hand_rechts','Strecken']]},{t:'Ro Bein überschlagen',a:[['Bein_links','Beugen']]},
+  {t:'Ro Fuß wippen',a:[['Bein_rechts','Translation_hoch']]},{t:'Ro Haltung halten',a:[['Rumpf','Halten']]},
+  {t:'Ro Ruhe',a:[['Kopf','Stopp'],['Rumpf','Stopp'],['Arm_links','Stopp'],['Arm_rechts','Stopp'],['Bein_links','Stopp'],['Bein_rechts','Stopp']]}],
+ // Ra: Denken und Sprechen über Ferhat Altun
+ ['Ferhat Altuns Ziel klären','über Ferhat Altun nachdenken','Frage zu Ferhat Altun stellen','Ferhat Altuns Verhalten deuten','Ferhat Altun zusammenfassen','an Ferhat Altun erinnern','Ferhat Altuns Absicht prüfen','Einsicht zu Ferhat Altun','Ferhat Altun widersprechen','über Ferhat Altun schweigen','Thema Ferhat Altun wechseln'].map(t=>({t:'Ra '+t})),
+ // Ri: Wahrnehmen im Gespräch über Ferhat Altun
+ ['Ferhat Altuns Worte hören','Ferhat Altuns Muster erkennen','Ferhat Altuns Tonfall bemerken','Ferhat Altuns Haltung beobachten','Ferhat Altuns Pausen bemerken','Ferhat Altuns Unruhe bemerken','Ferhat Altuns Blick deuten','Blickkontakt über Ferhat Altun','Atem beim Thema Ferhat Altun'].map(t=>({t:'Ri '+t})),
+ // Re: Reaktion und Entladung beim Sprechen über Ferhat Altun (r = Arm greift zum Gegenstand)
+ [['Stift: Ferhat Altun notieren',1],['Notizbuch zu Ferhat Altun greifen',1],['Wasserglas greifen',1],['Unterlagen zu Ferhat Altun reichen',1],['Hand reichen',1],['Seufzen über Ferhat Altun',0],['Lachen über Ferhat Altun',0],['Anspannung lösen',0],['Ferhat Altun zustimmen',0],['Gefühl zu Ferhat Altun zulassen',0]].map(([t,r])=>({t:'Re '+t,r}))
+];
+
+// ---- Szene ----
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(innerWidth,innerHeight);
+document.body.appendChild(renderer.domElement);
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x07080c);
+scene.fog=new THREE.Fog(0x07080c,13,30);
+const camera=new THREE.PerspectiveCamera(52,innerWidth/innerHeight,0.1,60);
+scene.add(new THREE.AmbientLight(0x8a92a8,0.85));
+const sun=new THREE.DirectionalLight(0xffffff,0.8);sun.position.set(3,8,4);scene.add(sun);
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(16,16),new THREE.MeshStandardMaterial({color:0x0c0e15,roughness:1}));
+floor.rotation.x=-Math.PI/2;scene.add(floor);
+const grid=new THREE.GridHelper(16,32,0x2a3042,0x161a26);grid.position.y=0.01;scene.add(grid);
+const table=new THREE.Mesh(new THREE.CylinderGeometry(0.4,0.4,0.04,24),new THREE.MeshStandardMaterial({color:0x3a3f4c}));
+table.position.set(0,0.45,0);scene.add(table);
+const tleg=new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.04,0.45,8),new THREE.MeshStandardMaterial({color:0x2a2e38}));
+tleg.position.set(0,0.22,0);scene.add(tleg);
+
+function label(txt,col,w,h){
+  const c=document.createElement('canvas');c.width=256;c.height=64;const x=c.getContext('2d');
+  x.font='bold 40px system-ui';x.textAlign='center';x.textBaseline='middle';
+  x.lineWidth=6;x.strokeStyle='#000';x.strokeText(txt,128,34);x.fillStyle=col;x.fillText(txt,128,34);
+  const s=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),depthTest:false,transparent:true}));
+  s.scale.set(w,h,1);return s;
+}
+
+const topic=label('Ferhat Altun','#e6e8ee',1.5,0.38);topic.position.set(0,1.0,0);scene.add(topic);
+const pgeo=new THREE.PlaneGeometry(H*2,H*2,56,56);
+function planeMat(){
+  const u={uR1:{value:-9},uR2:{value:-9},uA1:{value:0},uA2:{value:0},uSrc:{value:new THREE.Vector2()},uSnk:{value:new THREE.Vector2()},
+    c0:{value:new THREE.Color(COL[0])},c1:{value:new THREE.Color(COL[1])},c2:{value:new THREE.Color(COL[2])},c3:{value:new THREE.Color(COL[3])}};
+  return new THREE.ShaderMaterial({uniforms:u,transparent:true,side:THREE.DoubleSide,depthWrite:false,
+  vertexShader:`uniform float uR1,uR2,uA1,uA2;uniform vec2 uSrc,uSnk;varying vec2 vUv;varying float vD;
+  void main(){vUv=uv;vec3 p=position;float d1=distance(p.xy,uSrc),d2=distance(p.xy,uSnk);
+  float e1=exp(-pow((d1-uR1)/0.5,2.0)),e2=exp(-pow((d2-uR2)/0.55,2.0));
+  float disp=uA1*e1*sin(6.0*(d1-uR1))+uA2*e2*sin(6.0*(d2-uR2));p.z+=disp;vD=disp;
+  gl_Position=projectionMatrix*modelViewMatrix*vec4(p,1.0);}`,
+  fragmentShader:`uniform vec3 c0,c1,c2,c3;varying vec2 vUv;varying float vD;
+  void main(){float u=vUv.x,v=vUv.y;
+  vec3 col=(c0*(1.0-u)*v+c1*u*v+c2*u*(1.0-v)+c3*(1.0-u)*(1.0-v))*0.55;
+  vec2 g=step(0.96,fract(vUv*10.0));col=mix(col,vec3(1.0),max(g.x,g.y)*0.15);
+  col+=vec3(abs(vD)*4.0);
+  float e=min(min(u,1.0-u),min(v,1.0-v));
+  gl_FragColor=vec4(col,0.74+0.2*smoothstep(0.03,0.0,e));}`});
+}
+
+// ---- Figuren ----
+const SIGN={Kopf:1,Rumpf:1,Schulter_links:-1,Schulter_rechts:-1,Arm_links:-1,Arm_rechts:-1,Hand_links:-1,Hand_rechts:-1,Bein_links:-1,Bein_rechts:-1};
+function makeAgent(name,x,face,clothCol){
+  const g=new THREE.Group();g.position.set(x,0,0);g.rotation.y=face;scene.add(g);
+  const cloth=new THREE.MeshStandardMaterial({color:clothCol,roughness:0.8});
+  const skin=new THREE.MeshStandardMaterial({color:0x8fa392,roughness:0.7});
+  const dark=new THREE.MeshStandardMaterial({color:0x232733,roughness:0.9});
+  const bone=new THREE.MeshStandardMaterial({color:0xe2dcc8,emissive:0xe8c93a,emissiveIntensity:0});
+  const seat=new THREE.Mesh(new THREE.BoxGeometry(0.62,0.08,0.62),dark);seat.position.set(0,0.5,-0.02);g.add(seat);
+  const back=new THREE.Mesh(new THREE.BoxGeometry(0.62,0.6,0.06),dark);back.position.set(0,0.85,-0.36);g.add(back);
+  const hip=new THREE.Group();hip.position.set(0,0.58,-0.05);g.add(hip);
+  const seg=[];let par=hip;
+  for(let i=0;i<8;i++){
+    const s=new THREE.Group();if(i)s.position.y=0.095;par.add(s);
+    const b=new THREE.Mesh(new THREE.BoxGeometry(0.46,0.095,0.24),cloth);b.position.y=0.047;s.add(b);
+    const v=new THREE.Mesh(new THREE.SphereGeometry(0.034,10,8),bone);v.position.set(0,0.047,-0.135);s.add(v);
+    seg.push(s);par=s;
+  }
+  const chest=new THREE.Group();chest.position.y=0.095;par.add(chest);
+  const headMat=new THREE.MeshStandardMaterial({color:0x8fa392,roughness:0.7,emissive:0x000000,emissiveIntensity:0});
+  const headG=new THREE.Group();headG.position.y=0.03;chest.add(headG);
+  const hm=new THREE.Mesh(new THREE.SphereGeometry(0.17,20,16),headMat);hm.position.y=0.17;headG.add(hm);
+  const eyeM=new THREE.MeshBasicMaterial({color:0xe8c93a});
+  for(const s of [-1,1]){const e=new THREE.Mesh(new THREE.SphereGeometry(0.026,8,8),eyeM);e.position.set(0.065*s,0.2,0.15);headG.add(e);}
+  const parts={Kopf:headG};
+  for(const [side,sx] of [['links',1],['rechts',-1]]){
+    const sh=new THREE.Group();sh.position.set(0.3*sx,-0.06,0);chest.add(sh);
+    sh.add(new THREE.Mesh(new THREE.SphereGeometry(0.07,10,8),cloth));
+    const arm=new THREE.Group();arm.rotation.x=-0.25;sh.add(arm);
+    const ua=new THREE.Mesh(new THREE.BoxGeometry(0.12,0.34,0.12),cloth);ua.position.y=-0.17;arm.add(ua);
+    const fa=new THREE.Group();fa.position.y=-0.34;fa.rotation.x=-0.9;arm.add(fa);
+    const fm=new THREE.Mesh(new THREE.BoxGeometry(0.1,0.3,0.1),skin);fm.position.y=-0.15;fa.add(fm);
+    const hand=new THREE.Group();hand.position.y=-0.3;fa.add(hand);
+    hand.add(new THREE.Mesh(new THREE.SphereGeometry(0.07,10,8),skin));
+    parts['Schulter_'+side]=sh;parts['Arm_'+side]=arm;parts['Hand_'+side]=hand;
+    const leg=new THREE.Group();leg.position.set(0.13*sx,0.58,0.05);leg.rotation.x=-1.5;g.add(leg);
+    const th=new THREE.Mesh(new THREE.BoxGeometry(0.15,0.45,0.15),dark);th.position.y=-0.225;leg.add(th);
+    const sg=new THREE.Group();sg.position.y=-0.45;sg.rotation.x=1.5;leg.add(sg);
+    const sm=new THREE.Mesh(new THREE.BoxGeometry(0.13,0.45,0.13),dark);sm.position.y=-0.225;sg.add(sm);
+    const ft=new THREE.Mesh(new THREE.BoxGeometry(0.14,0.06,0.24),dark);ft.position.set(0,-0.46,0.05);sg.add(ft);
+    parts['Bein_'+side]=leg;
+  }
+  parts.Rumpf=hip;
+  const pose={},base={};
+  for(const k in parts){const o=parts[k];base[k]={p:o.position.clone(),r:o.rotation.clone()};pose[k]={t:[0,0,0,0,0,0],c:[0,0,0,0,0,0],hold:0};}
+  // Ebene über dem Kopf
+  const mat=planeMat();
+  const plane=new THREE.Mesh(pgeo,mat);plane.rotation.x=-Math.PI/2;
+  const rig=new THREE.Group();rig.position.set(x,PY,0);rig.add(plane);scene.add(rig);
+  const markers=CL.map((c,i)=>{
+    const m=new THREE.Mesh(new THREE.SphereGeometry(0.1,14,10),new THREE.MeshBasicMaterial({color:COL[i]}));
+    m.position.set(c[0],c[1],0.02);plane.add(m);
+    const l=label(N[i],HEX(COL[i]),0.6,0.15);l.position.set(c[0]*1.0,c[1]*1.0,0.3);plane.add(l);return m;
+  });
+  const ring=new THREE.Mesh(new THREE.RingGeometry(0.18,0.23,32),new THREE.MeshBasicMaterial({color:0xffffff,side:THREE.DoubleSide,transparent:true,opacity:0.9}));
+  plane.add(ring);
+  const nm=label(name,'#e6e8ee',1.3,0.33);nm.position.set(x,PY+0.55,0);scene.add(nm);
+  return {name,x,g,parts,pose,base,seg,bone,headMat,mat,u:mat.uniforms,markers,ring,
+    src:0,snk:2,glow:{c:0,v:0},lines:[],xz:Math.sin(face)};
+}
+const agents=[makeAgent('Klient',-2.1,Math.PI/2,0x35455c),makeAgent('Psychiater',2.1,-Math.PI/2,0x4a4538)];
+
+// ---- Kommandoausführung ----
+function applyCmd(ag,part,mo){
+  const ps=ag.pose[part],sg=SIGN[part],t=ps.t;
+  if(mo==='Stopp'){t.fill(0);ps.hold=0;return;}
+  if(mo==='Halten'){ps.hold=4;return;}
+  ps.hold=0;
+  if(mo==='Translation_vor')t[2]=0.14;else if(mo==='Translation_zurueck')t[2]=-0.14;
+  else if(mo==='Translation_hoch')t[1]=0.12;else if(mo==='Translation_runter')t[1]=-0.12;
+  else if(mo==='Rotation_links')t[4]=0.7;else if(mo==='Rotation_rechts')t[4]=-0.7;
+  else if(mo==='Beugen')t[3]=sg*0.6;else if(mo==='Strecken')t[3]=-sg*0.4;
+}
+function exec(ai,set){
+  const ag=agents[ai],list=CMD[set],c=list[Math.floor(Math.random()*list.length)];
+  if(set===0)for(const [pt,mo] of c.a)applyCmd(ag,pt,mo);
+  else{
+    ag.glow={c:COL[set],v:1};
+    if(set===3&&c.r){ag.pose.Arm_rechts.t[3]=-1.0;ag.pose.Arm_rechts.hold=1.5;ag.pose.Hand_rechts.t[3]=-0.3;ag.pose.Hand_rechts.hold=1.5;}
+  }
+  ag.lines.unshift({t:c.t,s:set});ag.lines.length=Math.min(ag.lines.length,4);
+  $('l'+ai).innerHTML=ag.lines.map(l=>'<div style="color:'+HEX(COL[l.s])+'">'+l.t+'</div>').join('');
+}
+const $=id=>document.getElementById(id);
+
+// ---- Kommunikation: Quelle → Senke → Quelle des Gegenübers ----
+const rel=new THREE.Line(new THREE.BufferGeometry().setAttribute('position',new THREE.BufferAttribute(new Float32Array(6),3)),
+  new THREE.LineBasicMaterial({color:0xffffff,transparent:true,opacity:0,depthTest:false}));
+rel.frustumCulled=false;rel.renderOrder=5;scene.add(rel);
+function cw(ag,i){return new THREE.Vector3(ag.x+CL[i][0],PY,-CL[i][1]);}
+function dist(a,b){return Math.hypot(CL[a][0]-CL[b][0],CL[a][1]-CL[b][1]);}
+
+const T={a:0,phase:'speak',t:0,done:0,D:0};
+function startTurn(i,src,snk){
+  const ag=agents[i];ag.src=src;ag.snk=snk;T.a=i;T.phase='speak';T.t=0;T.done=0;T.D=dist(src,snk);
+  ag.u.uSrc.value.set(...CL[src]);ag.u.uSnk.value.set(...CL[snk]);ag.u.uR1.value=0;ag.u.uR2.value=-9;ag.u.uA2.value=0;
+  rel.material.opacity=0;
+  for(const k of [0,1]){
+    $('k'+k).classList.toggle('on',k===i);
+    const a=agents[k];$('s'+k).innerHTML='<span style="color:'+HEX(COL[a.src])+'">'+N[a.src]+'</span> → <span style="color:'+HEX(COL[a.snk])+'">'+N[a.snk]+'</span>';
+  }
+}
+startTurn(0,0,2);
+
+// ---- Kamera ----
+let theta=0.5,phi=1.0,rad=9,dragging=false,lx=0,ly=0,pinch=0;
+const el=renderer.domElement,ptrs=new Map();
+el.addEventListener('pointerdown',e=>{ptrs.set(e.pointerId,e);el.setPointerCapture(e.pointerId);dragging=true;lx=e.clientX;ly=e.clientY;});
+el.addEventListener('pointerup',e=>{ptrs.delete(e.pointerId);if(!ptrs.size)dragging=false;pinch=0;});
+el.addEventListener('pointermove',e=>{
+  if(!ptrs.has(e.pointerId))return;ptrs.set(e.pointerId,e);
+  if(ptrs.size===2){const [a,b]=[...ptrs.values()];const d=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);if(pinch)rad=Math.min(16,Math.max(4,rad*pinch/d));pinch=d;return;}
+  theta-=(e.clientX-lx)*0.006;phi=Math.min(1.45,Math.max(0.25,phi-(e.clientY-ly)*0.005));lx=e.clientX;ly=e.clientY;
+});
+el.addEventListener('wheel',e=>{rad=Math.min(16,Math.max(4,rad+e.deltaY*0.01));},{passive:true});
+addEventListener('resize',()=>{renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();});
+
+let last=performance.now(),frame=0;
+function tick(now){
+  const dt=Math.min(0.05,(now-last)/1000);last=now;frame++;
+  const ag=agents[T.a],ot=agents[1-T.a];
+  T.t+=dt;
+  if(T.phase==='speak'){
+    ag.u.uR1.value=WS*T.t;ag.u.uA1.value=Math.min(0.2,0.06+T.t*0.05);
+    while(T.done<3&&T.t>=T.D/WS*T.done/3){exec(T.a,ag.src);T.done++;}
+    if(WS*T.t>=T.D){T.phase='hit';T.t=0;}
+  }else if(T.phase==='hit'){
+    ag.u.uR1.value=WS*(T.D/WS+T.t);ag.u.uA1.value=Math.max(0,0.2-T.t*0.2);
+    ag.u.uR2.value=WS*T.t;ag.u.uA2.value=Math.max(0,0.26-T.t*0.2);
+    if(T.t>0.9){T.phase='comm';T.t=0;
+      ot.u.uSnk.value.set(...CL[ag.snk]);ot.u.uR2.value=-9;ot.u.uA2.value=0;
+      rel.material.color.setHex(COL[ag.snk]);}
+  }else{
+    const p=Math.min(1,T.t/1.5);
+    const a=cw(ag,ag.snk),b=cw(ot,ag.snk);
+    const pa=rel.geometry.attributes.position;pa.setXYZ(0,a.x,a.y,a.z);pa.setXYZ(1,b.x,b.y,b.z);pa.needsUpdate=true;
+    rel.material.opacity=0.8*Math.sin(p*Math.PI);
+    if(p>0.85){const q=T.t-1.275;ot.u.uR2.value=WS*Math.max(0,q)*1.4;ot.u.uA2.value=0.2;}
+    ag.u.uA1.value*=0.92;ag.u.uA2.value*=0.92;
+    if(T.t>1.9){
+      const n0=ag.snk;let n;do{n=Math.floor(Math.random()*4);}while(n===n0);
+      startTurn(1-T.a,n0,n);
+    }
+  }
+
+  // Posen und Wirbelsäule
+  for(const k of [0,1]){
+    const a=agents[k];
+    for(const name in a.pose){
+      const ps=a.pose[name],t=ps.t,c=ps.c,b=a.base[name];
+      if(ps.hold>0)ps.hold-=dt;else for(let i=0;i<6;i++)t[i]*=1-dt*0.3;
+      for(let i=0;i<6;i++)c[i]+=(t[i]-c[i])*Math.min(1,dt*4);
+      if(name==='Rumpf'){
+        a.parts.Rumpf.position.set(b.p.x+c[0],b.p.y+c[1],b.p.z+c[2]);
+        for(const s of a.seg)s.rotation.set(c[3]/8,c[4]/8,0);
+      }else{
+        const o=a.parts[name];
+        o.position.set(b.p.x+c[0],b.p.y+c[1],b.p.z+c[2]);
+        o.rotation.set(b.r.x+c[3],b.r.y+c[4],b.r.z+c[5]);
+      }
+    }
+    const r=a.pose.Rumpf.c;
+    a.bone.emissiveIntensity=Math.min(1,(Math.abs(r[3])+Math.abs(r[4]))*1.6);
+    a.glow.v=Math.max(0,a.glow.v-dt*0.7);
+    a.headMat.emissive.setHex(a.glow.c);a.headMat.emissiveIntensity=a.glow.v*0.8;
+    if(frame%6===0)$('p'+k).textContent='Wirbelsäule: Beugung '+Math.round(r[3]*57.3)+'° · Torsion '+Math.round(r[4]*57.3)+'°';
+    // Marker
+    a.markers.forEach((m,i)=>{const act=(k===T.a&&i===a.src);m.scale.setScalar(act?1.5+0.4*Math.sin(now/110):(i===a.snk?1.2:1));});
+    a.ring.position.set(CL[a.snk][0],CL[a.snk][1],0.03);
+    a.ring.scale.setScalar(1+0.12*Math.sin(now/260));a.ring.material.color.setHex(COL[a.snk]);
+  }
+
+  // Kamera
+  if(!dragging)theta+=dt*0.04;
+  const tg=new THREE.Vector3(0,1.5,0);
+  camera.position.set(tg.x+rad*Math.sin(phi)*Math.sin(theta),tg.y+rad*Math.cos(phi),tg.z+rad*Math.sin(phi)*Math.cos(theta));
+  camera.lookAt(tg);
+
+  // Status
+  const who=ag.name,total=T.D/WS+0.9+1.9;
+  const el_=T.phase==='speak'?T.t:T.phase==='hit'?T.D/WS+T.t:T.D/WS+0.9+T.t;
+  $('status').textContent=T.phase==='speak'?who+' spricht über Ferhat Altun: '+N[ag.src]+' vibriert als Quelle'
+    :T.phase==='hit'?who+': Übergang in die Senke '+N[ag.snk]
+    :who+' → '+ot.name+': '+N[ag.snk]+' wird dessen Quelle';
+  $('fill').style.width=Math.min(100,el_/total*100)+'%';
+  $('fill').style.background=HEX(COL[ag.src]);
+
+  renderer.render(scene,camera);
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
