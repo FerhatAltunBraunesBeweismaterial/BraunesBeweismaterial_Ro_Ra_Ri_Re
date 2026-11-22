@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ri_combine v10 – Kontinuierliche Personenbewegung & Ro/Ra/Ri/Re-Ausführung</title>
+<title>ri_combine v11 – 3 Personen-Ebenen & Quaderstruktur-Ebene</title>
 <style>
 *{box-sizing:border-box}html,body{margin:0;height:100%;overflow:hidden;background:#05060a;color:#e8e8ee;font-family:system-ui,sans-serif}
 canvas{display:block;touch-action:none}
@@ -44,7 +44,7 @@ button.activeToggle{background:#1b3b2b;border-color:#4be07a;color:#a8f5c2}
   <button id="reset">Reset</button>
 </div>
 <div id="panel"><div id="people"></div></div>
-<div id="hint">Ziehen = drehen · Pinch / Mausrad = Zoom · Personen bewegen sich aktiv im Raum und führen Ro → Ra → Ri → Re aus</div>
+<div id="hint">Ziehen = drehen · Pinch / Mausrad = Zoom · Je 1 Ebene pro Person + 1 Ebene an der Quaderstruktur (4 Tentakel)</div>
 <div id="bar"><div id="fill"></div></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -333,11 +333,16 @@ const people=[
   person("Nutzer",2.7,.8,0x49343b,0xc99b78)
 ];
 
-// Wellenebenen unter/über den Personen
-const pts=[[-1.15,.75],[1.15,.75],[1.15,-.75],[-1.15,-.75]],planes=[];
-for(let i=0;i<4;i++){
-  const geo=new THREE.PlaneGeometry(2.5,1.7,40,30);
-  const uniforms={uTime:{value:0},uCol:{value:new THREE.Color(COLORS[i])},uCol2:{value:new THREE.Color(COLORS[(i+1)%4])},uSrc:{value:new THREE.Vector2(...pts[i])}};
+// Hilfsfunktion zur Erzeugung einer Wellenebene
+const pts=[[-1.15,.75],[1.15,.75],[1.15,-.75],[-1.15,-.75]];
+function createWavePlane(i,w=2.3,d=1.55){
+  const geo=new THREE.PlaneGeometry(w,d,40,30);
+  const uniforms={
+    uTime:{value:0},
+    uCol:{value:new THREE.Color(COLORS[i])},
+    uCol2:{value:new THREE.Color(COLORS[(i+1)%4])},
+    uSrc:{value:new THREE.Vector2(...pts[i])}
+  };
   const material=new THREE.ShaderMaterial({
     uniforms,transparent:true,side:THREE.DoubleSide,depthWrite:false,
     vertexShader:`uniform float uTime;uniform vec2 uSrc;varying vec2 vUv;varying float vD;void main(){vUv=uv;vec3 p=position;float d=length(p.xy-uSrc);p.z+=.16*sin(d*7.0-uTime*3.0)*exp(-d*.7)+.02*sin(p.x*8.0+uTime*2.5);vD=p.z;gl_Position=projectionMatrix*modelViewMatrix*vec4(p,1.0);}`,
@@ -346,8 +351,11 @@ for(let i=0;i<4;i++){
   const mesh=new THREE.Mesh(geo,material);
   mesh.rotation.x=-Math.PI/2;
   scene.add(mesh);
-  planes.push({mesh,uniforms});
+  return {mesh,uniforms};
 }
+
+// Genau 1 Wellenebene pro Person (insgesamt 3 Personen-Ebenen)
+const personPlanes=people.map((_,i)=>createWavePlane(i,2.2,1.5));
 
 // Singularität & Verbindungen
 const SING=new THREE.Vector3(0,1.7,-.2);
@@ -366,7 +374,7 @@ const lines=people.map((p,i)=>{
   return l;
 });
 
-// Re-Quaderstruktur & Tentakel
+// Re-Quaderstruktur mit 4 Tentakeln & der dazugehörigen 4. Ebene (Fuzzy-Regler-Feld)
 const QPOS=new THREE.Vector3(0,4.9,-.4),quader=new THREE.Group();
 quader.position.copy(QPOS);
 scene.add(quader);
@@ -374,9 +382,12 @@ const qbox=new THREE.Mesh(new THREE.BoxGeometry(1.6,.9,1),mat(0x1b1f2c));
 quader.add(qbox);
 const qedge=new THREE.LineSegments(new THREE.EdgesGeometry(qbox.geometry),new THREE.LineBasicMaterial({color:COLORS[0]}));
 quader.add(qedge);
-const qLabel=label("Re_Quaderstruktur",1.8,.3);
-qLabel.position.set(0,.9,0);
+const qLabel=label("Re_Quaderstruktur (4 Tentakel)",2.4,.32);
+qLabel.position.set(0,.95,0);
 quader.add(qLabel);
+
+// Die 4. Ebene gehört direkt zur Quaderstruktur mit ihren vier Tentakeln
+const quaderPlane=createWavePlane(3,2.8,1.9);
 
 const anchors=[[-.8,-.5],[.8,-.5],[-.8,.5],[.8,.5]].map(a=>new THREE.Vector3(QPOS.x+a[0],QPOS.y-.45,QPOS.z+a[1]));
 const TSEG=24,tentacles=anchors.map((a,i)=>{
@@ -459,7 +470,7 @@ function showCommands(i, activePh=-1){
   ).join(" → ");
 }
 
-function getReTargetPos(reStr, personIdx){
+function getReTargetPos(reStr){
   if(/Tuer|Fenster/.test(reStr)) return targetObjects.Tuer.pos;
   if(/Tisch|Laptop|Buch|Stift|Handy|Tasse|Schluessel|Tasche/.test(reStr)) return targetObjects.Tisch.pos;
   if(/Stuhl|Sofa/.test(reStr)) return targetObjects.Stuhl.pos;
@@ -477,16 +488,13 @@ function startPersonSequence(i, rowNr){
   p.phaseTimer=0;
   document.getElementById("card"+i).classList.add("running");
 
-  // Neues Bewegungsziel im Raum abhängig vom Kommando bestimmen
-  const reTarget=getReTargetPos(r.Re, i);
+  const reTarget=getReTargetPos(r.Re);
   const angleOffset=(i-1)*0.75 + (r.Nr%5)*0.2;
   if(/vor|Tuer|Tisch|Stuhl|Lichtschalter|Ampel|Baum|Auto|Sofa|Laptop|Buch|Ball/.test(r.Ro+" "+r.Re)){
-    // Bewege dich näher an das Zielobjekt oder ins Zentrum
     const pull = /Re/.test(r.Re) ? 0.55 : 0.35;
     p.targetX = clamp(p.curX*(1-pull) + reTarget.x*pull + Math.sin(angleOffset)*0.9, -4.2, 4.2);
     p.targetZ = clamp(p.curZ*(1-pull) + reTarget.z*pull + Math.cos(angleOffset)*0.9, -4.2, 4.2);
   } else {
-    // Kreisförmige Bewegung im Raum
     p.wpAngle += 0.65 + (i*0.2);
     const radius = 2.2 + (r.Nr%3)*0.55;
     p.targetX = clamp(Math.cos(p.wpAngle)*radius, -4.2, 4.2);
@@ -508,11 +516,19 @@ function setPhase(ph){
     "Re · Zielobjekt-Ausrichtung & Entladung"
   ][ph];
   for(let i=0;i<4;i++) document.getElementById("c"+i).classList.toggle("on",i===ph);
-  planes.forEach((p,i)=>{
+
+  // Jede Person behält exakt ihre eine Wellenebene
+  personPlanes.forEach((p,i)=>{
     p.uniforms.uCol.value.setHex(COLORS[(ph+i)%4]);
     p.uniforms.uCol2.value.setHex(COLORS[(ph+i+1)%4]);
     p.uniforms.uSrc.value.set(...pts[(ph+i)%4]);
   });
+
+  // Die 4. Wellenebene gehört zur Quaderstruktur
+  quaderPlane.uniforms.uCol.value.setHex(COLORS[(ph+3)%4]);
+  quaderPlane.uniforms.uCol2.value.setHex(COLORS[ph]);
+  quaderPlane.uniforms.uSrc.value.set(...pts[3]);
+
   tentacles.forEach(t=>{
     t.material.color.setHex(COLORS[ph]);
     t.material.emissive.setHex(COLORS[ph]);
@@ -577,7 +593,7 @@ el.addEventListener("pointermove",e=>{
 el.addEventListener("wheel",e=>rad=clamp(rad+e.deltaY*.01,6,22),{passive:true});
 addEventListener("resize",()=>{renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix()});
 
-// Initiale Sequenzen starten, damit sofort Bewegung stattfindet
+// Initiale Sequenzen starten
 people.forEach((p,i)=>startPersonSequence(i, i*15+1));
 
 let last=performance.now();
@@ -590,11 +606,10 @@ function tick(now){
   const ph=Math.floor(elapsed/PH)%4, k=(elapsed%PH)/PH;
   if(ph!==phase) setPhase(ph);
 
-  const phaseDur = 2.4; // Sekunden pro Ro / Ra / Ri / Re Schritt
+  const phaseDur = 2.4;
   let hudSummary = [];
 
   people.forEach((p,i)=>{
-    // Wenn Auto-Zyklus aktiv und Person fertig -> nächsten Satz aus CSV wählen & ausführen
     if(!paused && autoCycle && !p.running){
       const nextNr = (Number(document.getElementById("sel"+i).value) % COMMANDS.length) + 1;
       startPersonSequence(i, nextNr);
@@ -619,7 +634,7 @@ function tick(now){
     const cPh = p.running ? p.cmdPhase : -1;
     const phProgress = p.running ? clamp(p.phaseTimer / phaseDur, 0, 1) : 0;
 
-    // 1. Kontinuierliche Raumbewegung (Laufen zum Zielpunkt + Ro-Translation)
+    // 1. Kontinuierliche Raumbewegung
     let dx = p.targetX - p.curX;
     let dz = p.targetZ - p.curZ;
     const dist = Math.hypot(dx, dz);
@@ -627,13 +642,12 @@ function tick(now){
 
     if(!paused && dist > 0.06){
       isWalking = true;
-      const speed = (cPh === 0 ? 1.45 : 0.95); // In Ro-Phase schnelleres Schreiten
+      const speed = (cPh === 0 ? 1.45 : 0.95);
       const step = Math.min(dist, speed * dt);
       p.curX += (dx / dist) * step;
       p.curZ += (dz / dist) * step;
       p.walkCycle += dt * (speed * 6.5);
     } else if (!paused && autoCycle) {
-      // Sanftes Weiterpatrouillieren im Raum, damit immer Bewegung sichtbar bleibt
       p.wpAngle += dt * (0.35 + i * 0.08);
       const radPatrol = 2.3 + i * 0.45;
       p.targetX = Math.cos(p.wpAngle + i * 2.1) * radPatrol;
@@ -642,21 +656,18 @@ function tick(now){
 
     p.g.position.set(p.curX, 0, p.curZ);
 
-    // Blickrichtung: Beim Laufen in Laufrichtung, in Re-Phase zum Zielobjekt drehen
     let desiredYaw = p.base;
     if(cPh === 3 && r){
-      const objPos = getReTargetPos(r.Re, i);
+      const objPos = getReTargetPos(r.Re);
       desiredYaw = Math.atan2(objPos.x - p.curX, objPos.z - p.curZ);
     } else if(dist > 0.08){
       desiredYaw = Math.atan2(dx, dz);
     }
-    // Sanfte Winkel-Interpolation
     let diffYaw = desiredYaw - p.g.rotation.y;
     while(diffYaw > Math.PI) diffYaw -= Math.PI*2;
     while(diffYaw < -Math.PI) diffYaw += Math.PI*2;
     p.g.rotation.y += diffYaw * Math.min(1, dt * 5);
 
-    // Reset Gelenke auf Ausgangslage
     p.bodyPivot.rotation.set(0,0,0);
     p.bodyPivot.position.y = 0.78 + (isWalking ? Math.abs(Math.sin(p.walkCycle))*0.045 : 0);
     p.headPivot.rotation.set(0,0,0);
@@ -666,7 +677,6 @@ function tick(now){
     p.raAura.material.opacity = 0;
     p.riCone.material.opacity = 0;
 
-    // Bein- und Armschwung beim Gehen
     if(isWalking){
       const swing = Math.sin(p.walkCycle) * 0.55;
       p.hips[0].rotation.x = swing;
@@ -684,7 +694,6 @@ function tick(now){
       const pulse = 0.5 + 0.5 * Math.sin(elapsed * 8);
 
       if(cPh === 0){
-        // Ro: Motorische Ausführung (Kopf, Rumpf, Schulter, Arm, Hand, Bein + Translation/Rotation/Beugen/Strecken)
         const ro = r.Ro;
         updateLabel(p.cmdTag, ro, "#ff5b60");
         document.getElementById("badge"+i).textContent = "Ro";
@@ -721,31 +730,25 @@ function tick(now){
         }
       }
       else if(cPh === 1){
-        // Ra: Kognitive Verarbeitung (Gehirnareale aktivieren, Aura pulsiert, nachdenkliche Haltung)
         updateLabel(p.cmdTag, r.Ra, "#ffffff");
         document.getElementById("badge"+i).textContent = "Ra";
         p.raAura.material.opacity = 0.35 + 0.55 * pulse;
         p.raAura.scale.setScalar(1 + 0.35 * pulse);
         p.headPivot.rotation.z = Math.sin(elapsed * 4 + i) * 0.12;
-        // Hand leicht zum Kinn/Kopf führen bei Denken/Planen
         p.shoulders[1].rotation.x = -0.9 * wave;
         p.shoulders[1].rotation.z = -0.35 * wave;
       }
       else if(cPh === 2){
-        // Ri: Sensorik (Riechen, Schmecken, Tasten, Hören, Sehen)
         updateLabel(p.cmdTag, r.Ri, "#ffe14a");
         document.getElementById("badge"+i).textContent = "Ri";
         p.riCone.material.opacity = 0.25 + 0.35 * pulse;
         p.riCone.scale.set(1 + 0.2*pulse, 1 + 0.3*wave, 1 + 0.2*pulse);
-        // Suchbewegung des Kopfes zum Scannen der Umgebung
         p.headPivot.rotation.y = Math.sin(phProgress * Math.PI * 2) * 0.55;
         p.headPivot.rotation.x = -0.15 * wave;
       }
       else if(cPh === 3){
-        // Re: Entladung & Ausstrecken Richtung Zielobjekt (Tür, Tisch, Stuhl, Schalter...)
         updateLabel(p.cmdTag, r.Re, "#4be07a");
         document.getElementById("badge"+i).textContent = "Re";
-        // Rechten Arm gezielt nach vorne zum Objekt ausstrecken
         p.shoulders[1].rotation.x = -1.35 * wave;
         p.shoulders[1].rotation.z = -0.15 * wave;
         p.bodyPivot.rotation.x = 0.18 * wave;
@@ -760,15 +763,15 @@ function tick(now){
     document.getElementById("activeCmdBox").innerHTML = hudSummary.join(" &nbsp;|&nbsp; ");
   }
 
-  // Wellenebenen folgen den Personen im Raum
-  planes.forEach((p,i)=>{
+  // Genau 1 Wellenebene direkt über dem Kopf der jeweiligen Person
+  personPlanes.forEach((p,i)=>{
     p.uniforms.uTime.value=elapsed;
-    const personObj = people[i%3].g.position;
+    const personObj = people[i].g.position;
     p.mesh.position.set(personObj.x, 2.85 + Math.sin(elapsed*.7+i)*.045, personObj.z);
     p.mesh.rotation.z=Math.sin(elapsed*.25+i)*.035;
   });
 
-  // Singularität & dynamische Verbindungslinien zu den laufenden Personen
+  // Singularität & Verbindungslinien
   sing.scale.setScalar(1+.12*Math.sin(elapsed*3));
   halo.scale.setScalar(1+.25*Math.sin(elapsed*1.7));
   lines.forEach((l,i)=>{
@@ -779,9 +782,13 @@ function tick(now){
     l.material.opacity=.22+.32*(.5+.5*Math.sin(elapsed*2+i));
   });
 
-  // Quader & Tentakel folgen den bewegten Personen
-  quader.position.y=QPOS.y+Math.sin(elapsed*.8)*.1;
+  // Quaderstruktur mit ihren 4 Tentakeln & der 4. Ebene direkt darunter am Tentakelansatz
   const bob=Math.sin(elapsed*.8)*.1;
+  quader.position.y=QPOS.y+bob;
+  quaderPlane.uniforms.uTime.value=elapsed;
+  quaderPlane.mesh.position.set(QPOS.x, QPOS.y - 0.55 + bob, QPOS.z);
+  quaderPlane.mesh.rotation.z=Math.sin(elapsed*.25+3)*.035;
+
   const dest=[
     new THREE.Vector3(people[0].curX, 1.3, people[0].curZ),
     SING,
