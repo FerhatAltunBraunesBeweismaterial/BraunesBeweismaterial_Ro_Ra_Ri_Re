@@ -1,0 +1,751 @@
+```html
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ri_Senke – Re_Quaderstruktur & Gedankenkommandos</title>
+<style>
+:root{--bg:#06121c;--fg:#e6eef2;--panel:rgba(6,18,28,.84);--line:rgba(230,238,242,.22);--ro:#e0243a;--ra:#f4f4f4;--ri:#ffd93b;--re:#3ddc6a;box-sizing:border-box}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font-family:Georgia,"Times New Roman",serif;overflow:hidden}
+canvas{display:block;width:100%;height:100%;touch-action:none}
+.box{position:fixed;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 14px;font-size:13.5px;line-height:1.45;backdrop-filter:blur(6px);z-index:10}
+#hud{top:calc(env(safe-area-inset-top,0px) + 10px);left:12px;max-width:min(420px,calc(100vw - 24px))}
+#hud b{font-size:15.5px;font-weight:600;letter-spacing:.3px}
+#active-cmd{margin-top:6px;padding:6px 9px;border-radius:5px;background:rgba(255,255,255,.06);border-left:3px solid var(--ro);font-family:"Courier New",monospace;font-size:12.5px;word-break:break-word}
+#active-desc{margin-top:4px;font-size:12px;opacity:.85;font-style:italic}
+
+#ctrl{top:calc(env(safe-area-inset-top,0px) + 10px);right:12px;width:min(340px,calc(100vw - 24px));display:flex;flex-direction:column;gap:8px}
+.row{display:flex;gap:6px;align-items:center}
+select,button{background:rgba(15,32,46,.9);color:var(--fg);border:1px solid var(--line);border-radius:5px;padding:5px 8px;font-family:inherit;font-size:12.5px;cursor:pointer}
+select{flex:1;min-width:0}
+button:hover{background:rgba(30,60,84,.95);border-color:rgba(230,238,242,.45)}
+button.active{background:rgba(61,220,106,.22);border-color:var(--re);color:#fff}
+.tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+.tab{text-align:center;font-weight:600;padding:4px 0;border-radius:4px;font-size:12px;border:1px solid var(--line);background:rgba(255,255,255,.04)}
+.tab[data-op="Ro"].sel{background:rgba(224,36,58,.32);border-color:var(--ro)}
+.tab[data-op="Ra"].sel{background:rgba(244,244,244,.25);border-color:var(--ra)}
+.tab[data-op="Ri"].sel{background:rgba(255,217,59,.28);border-color:var(--ri)}
+.tab[data-op="Re"].sel{background:rgba(61,220,106,.28);border-color:var(--re)}
+
+#log-box{bottom:calc(env(safe-area-inset-bottom,0px) + 48px);left:12px;width:min(420px,calc(100vw - 24px));max-height:130px;overflow-y:auto;font-size:12px}
+#log-box h4{margin:0 0 4px 0;font-size:12px;text-transform:uppercase;letter-spacing:.6px;opacity:.75}
+.log-item{padding:2px 0;border-bottom:1px solid rgba(255,255,255,.07);font-family:"Courier New",monospace;font-size:11.5px;display:flex;align-items:center;gap:6px}
+.dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+
+#leg{bottom:calc(env(safe-area-inset-bottom,0px) + 10px);left:12px;display:flex;flex-wrap:wrap;gap:12px;padding:6px 12px;font-size:12.5px}
+#leg span{display:inline-flex;align-items:center;gap:6px}
+#leg i{width:11px;height:11px;border-radius:50%;display:inline-block;border:1px solid var(--line)}
+
+@media (max-width: 780px){
+  #ctrl{top:auto;bottom:calc(env(safe-area-inset-bottom,0px) + 52px);right:12px;width:calc(100vw - 24px)}
+  #log-box{display:none}
+}
+</style>
+</head>
+<body>
+
+<!-- Oben links: Status & aktives Gedankenkommando -->
+<div class="box" id="hud">
+  <b>ri_Senke – Gedankenkommandos</b><br>
+  <span id="s">Re_Quaderstruktur sendet Vibrationen</span>
+  <div id="active-cmd">Warte auf ersten Impuls...</div>
+  <div id="active-desc">Zyklus: Ro → Ra → Ri → Re (400 Kommandos geladen)</div>
+</div>
+
+<!-- Oben rechts: Kommando-Steuerung (400 Befehle) -->
+<div class="box" id="ctrl">
+  <div class="row" style="justify-content:space-between">
+    <strong style="font-size:12.5px">Kommando-Steuerung (400)</strong>
+    <div class="row">
+      <button id="btn-auto" class="active" title="Automatischer Zyklus">Auto: AN</button>
+      <button id="btn-exec" title="Ausgewähltes Kommando jetzt senden">Ausführen</button>
+    </div>
+  </div>
+  <div class="tabs">
+    <button class="tab sel" data-op="Ro">Ro (100)</button>
+    <button class="tab" data-op="Ra">Ra (100)</button>
+    <button class="tab" data-op="Ri">Ri (100)</button>
+    <button class="tab" data-op="Re">Re (100)</button>
+  </div>
+  <div class="row">
+    <select id="cmd-select"></select>
+  </div>
+</div>
+
+<!-- Unten links: Live-Protokoll & Farblegende -->
+<div class="box" id="log-box">
+  <h4>Ausgeführte Gedankenkommandos (<span id="exec-count">0</span>)</h4>
+  <div id="log-list"></div>
+</div>
+
+<div class="box" id="leg">
+  <span><i style="background:#e0243a"></i>Ro (Bewegung)</span>
+  <span><i style="background:#f4f4f4"></i>Ra (Denken)</span>
+  <span><i style="background:#ffd93b"></i>Ri (Reiz/Relation)</span>
+  <span><i style="background:#3ddc6a"></i>Re (Entladung)</span>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// Alle 400 Gedankenkommandos (Ro1..Ro100, Ra1..Ra100, Ri1..Ri100, Re1..Re100)
+const CMDS = {
+  "Ro": [
+    "Ro1_Kopf_Translation_vor", "Ro2_Kopf_Translation_zurueck", "Ro3_Kopf_Translation_hoch", "Ro4_Kopf_Translation_runter", "Ro5_Kopf_Rotation_links", "Ro6_Kopf_Rotation_rechts", "Ro7_Kopf_Beugen", "Ro8_Kopf_Strecken", "Ro9_Kopf_Halten", "Ro10_Kopf_Stopp",
+    "Ro11_Rumpf_Translation_vor", "Ro12_Rumpf_Translation_zurueck", "Ro13_Rumpf_Translation_hoch", "Ro14_Rumpf_Translation_runter", "Ro15_Rumpf_Rotation_links", "Ro16_Rumpf_Rotation_rechts", "Ro17_Rumpf_Beugen", "Ro18_Rumpf_Strecken", "Ro19_Rumpf_Halten", "Ro20_Rumpf_Stopp",
+    "Ro21_Schulter_links_Translation_vor", "Ro22_Schulter_links_Translation_zurueck", "Ro23_Schulter_links_Translation_hoch", "Ro24_Schulter_links_Translation_runter", "Ro25_Schulter_links_Rotation_links", "Ro26_Schulter_links_Rotation_rechts", "Ro27_Schulter_links_Beugen", "Ro28_Schulter_links_Strecken", "Ro29_Schulter_links_Halten", "Ro30_Schulter_links_Stopp",
+    "Ro31_Schulter_rechts_Translation_vor", "Ro32_Schulter_rechts_Translation_zurueck", "Ro33_Schulter_rechts_Translation_hoch", "Ro34_Schulter_rechts_Translation_runter", "Ro35_Schulter_rechts_Rotation_links", "Ro36_Schulter_rechts_Rotation_rechts", "Ro37_Schulter_rechts_Beugen", "Ro38_Schulter_rechts_Strecken", "Ro39_Schulter_rechts_Halten", "Ro40_Schulter_rechts_Stopp",
+    "Ro41_Arm_links_Translation_vor", "Ro42_Arm_links_Translation_zurueck", "Ro43_Arm_links_Translation_hoch", "Ro44_Arm_links_Translation_runter", "Ro45_Arm_links_Rotation_links", "Ro46_Arm_links_Rotation_rechts", "Ro47_Arm_links_Beugen", "Ro48_Arm_links_Strecken", "Ro49_Arm_links_Halten", "Ro50_Arm_links_Stopp",
+    "Ro51_Arm_rechts_Translation_vor", "Ro52_Arm_rechts_Translation_zurueck", "Ro53_Arm_rechts_Translation_hoch", "Ro54_Arm_rechts_Translation_runter", "Ro55_Arm_rechts_Rotation_links", "Ro56_Arm_rechts_Rotation_rechts", "Ro57_Arm_rechts_Beugen", "Ro58_Arm_rechts_Strecken", "Ro59_Arm_rechts_Halten", "Ro60_Arm_rechts_Stopp",
+    "Ro61_Hand_links_Translation_vor", "Ro62_Hand_links_Translation_zurueck", "Ro63_Hand_links_Translation_hoch", "Ro64_Hand_links_Translation_runter", "Ro65_Hand_links_Rotation_links", "Ro66_Hand_links_Rotation_rechts", "Ro67_Hand_links_Beugen", "Ro68_Hand_links_Strecken", "Ro69_Hand_links_Halten", "Ro70_Hand_links_Stopp",
+    "Ro71_Hand_rechts_Translation_vor", "Ro72_Hand_rechts_Translation_zurueck", "Ro73_Hand_rechts_Translation_hoch", "Ro74_Hand_rechts_Translation_runter", "Ro75_Hand_rechts_Rotation_links", "Ro76_Hand_rechts_Rotation_rechts", "Ro77_Hand_rechts_Beugen", "Ro78_Hand_rechts_Strecken", "Ro79_Hand_rechts_Halten", "Ro80_Hand_rechts_Stopp",
+    "Ro81_Bein_links_Translation_vor", "Ro82_Bein_links_Translation_zurueck", "Ro83_Bein_links_Translation_hoch", "Ro84_Bein_links_Translation_runter", "Ro85_Bein_links_Rotation_links", "Ro86_Bein_links_Rotation_rechts", "Ro87_Bein_links_Beugen", "Ro88_Bein_links_Strecken", "Ro89_Bein_links_Halten", "Ro90_Bein_links_Stopp",
+    "Ro91_Bein_rechts_Translation_vor", "Ro92_Bein_rechts_Translation_zurueck", "Ro93_Bein_rechts_Translation_hoch", "Ro94_Bein_rechts_Translation_runter", "Ro95_Bein_rechts_Rotation_links", "Ro96_Bein_rechts_Rotation_rechts", "Ro97_Bein_rechts_Beugen", "Ro98_Bein_rechts_Strecken", "Ro99_Bein_rechts_Halten", "Ro100_Bein_rechts_Stopp"
+  ],
+  "Ra": [
+    "Ra1_Frontallappen_Denken_starten", "Ra2_Frontallappen_Planen", "Ra3_Frontallappen_Entscheiden", "Ra4_Frontallappen_Sprechen_beginnen", "Ra5_Frontallappen_Satz_bilden", "Ra6_Frontallappen_Wort_suchen", "Ra7_Frontallappen_Erinnern", "Ra8_Frontallappen_Vergleichen", "Ra9_Frontallappen_Rechnen", "Ra10_Frontallappen_Bewerten", "Ra11_Frontallappen_Aufmerksamkeit_lenken", "Ra12_Frontallappen_Raum_vorstellen", "Ra13_Frontallappen_Sprache_verstehen", "Ra14_Frontallappen_Gedanken_wechseln", "Ra15_Frontallappen_Gedanken_halten", "Ra16_Frontallappen_Gedanken_loeschen", "Ra17_Frontallappen_Innere_Sprache", "Ra18_Frontallappen_Richtungswechsel_denken", "Ra19_Frontallappen_Bewegung_koordinieren", "Ra20_Frontallappen_Schlussfolgern",
+    "Ra21_Parietallappen_Denken_starten", "Ra22_Parietallappen_Planen", "Ra23_Parietallappen_Entscheiden", "Ra24_Parietallappen_Sprechen_beginnen", "Ra25_Parietallappen_Satz_bilden", "Ra26_Parietallappen_Wort_suchen", "Ra27_Parietallappen_Erinnern", "Ra28_Parietallappen_Vergleichen", "Ra29_Parietallappen_Rechnen", "Ra30_Parietallappen_Bewerten", "Ra31_Parietallappen_Aufmerksamkeit_lenken", "Ra32_Parietallappen_Raum_vorstellen", "Ra33_Parietallappen_Sprache_verstehen", "Ra34_Parietallappen_Gedanken_wechseln", "Ra35_Parietallappen_Gedanken_halten", "Ra36_Parietallappen_Gedanken_loeschen", "Ra37_Parietallappen_Innere_Sprache", "Ra38_Parietallappen_Richtungswechsel_denken", "Ra39_Parietallappen_Bewegung_koordinieren", "Ra40_Parietallappen_Schlussfolgern",
+    "Ra41_Temporallappen_Denken_starten", "Ra42_Temporallappen_Planen", "Ra43_Temporallappen_Entscheiden", "Ra44_Temporallappen_Sprechen_beginnen", "Ra45_Temporallappen_Satz_bilden", "Ra46_Temporallappen_Wort_suchen", "Ra47_Temporallappen_Erinnern", "Ra48_Temporallappen_Vergleichen", "Ra49_Temporallappen_Rechnen", "Ra50_Temporallappen_Bewerten", "Ra51_Temporallappen_Aufmerksamkeit_lenken", "Ra52_Temporallappen_Raum_vorstellen", "Ra53_Temporallappen_Sprache_verstehen", "Ra54_Temporallappen_Gedanken_wechseln", "Ra55_Temporallappen_Gedanken_halten", "Ra56_Temporallappen_Gedanken_loeschen", "Ra57_Temporallappen_Innere_Sprache", "Ra58_Temporallappen_Richtungswechsel_denken", "Ra59_Temporallappen_Bewegung_koordinieren", "Ra60_Temporallappen_Schlussfolgern",
+    "Ra61_Okzipitallappen_Denken_starten", "Ra62_Okzipitallappen_Planen", "Ra63_Okzipitallappen_Entscheiden", "Ra64_Okzipitallappen_Sprechen_beginnen", "Ra65_Okzipitallappen_Satz_bilden", "Ra66_Okzipitallappen_Wort_suchen", "Ra67_Okzipitallappen_Erinnern", "Ra68_Okzipitallappen_Vergleichen", "Ra69_Okzipitallappen_Rechnen", "Ra70_Okzipitallappen_Bewerten", "Ra71_Okzipitallappen_Aufmerksamkeit_lenken", "Ra72_Okzipitallappen_Raum_vorstellen", "Ra73_Okzipitallappen_Sprache_verstehen", "Ra74_Okzipitallappen_Gedanken_wechseln", "Ra75_Okzipitallappen_Gedanken_halten", "Ra76_Okzipitallappen_Gedanken_loeschen", "Ra77_Okzipitallappen_Innere_Sprache", "Ra78_Okzipitallappen_Richtungswechsel_denken", "Ra79_Okzipitallappen_Bewegung_koordinieren", "Ra80_Okzipitallappen_Schlussfolgern",
+    "Ra81_Kleinhirn_Denken_starten", "Ra82_Kleinhirn_Planen", "Ra83_Kleinhirn_Entscheiden", "Ra84_Kleinhirn_Sprechen_beginnen", "Ra85_Kleinhirn_Satz_bilden", "Ra86_Kleinhirn_Wort_suchen", "Ra87_Kleinhirn_Erinnern", "Ra88_Kleinhirn_Vergleichen", "Ra89_Kleinhirn_Rechnen", "Ra90_Kleinhirn_Bewerten", "Ra91_Kleinhirn_Aufmerksamkeit_lenken", "Ra92_Kleinhirn_Raum_vorstellen", "Ra93_Kleinhirn_Sprache_verstehen", "Ra94_Kleinhirn_Gedanken_wechseln", "Ra95_Kleinhirn_Gedanken_halten", "Ra96_Kleinhirn_Gedanken_loeschen", "Ra97_Kleinhirn_Innere_Sprache", "Ra98_Kleinhirn_Richtungswechsel_denken", "Ra99_Kleinhirn_Bewegung_koordinieren", "Ra100_Kleinhirn_Schlussfolgern"
+  ],
+  "Ri": [
+    "Ri1_Riechen_Reiz_aufnehmen", "Ri2_Riechen_Reiz_verstaerken", "Ri3_Riechen_Reiz_daempfen", "Ri4_Riechen_Reiz_filtern", "Ri5_Riechen_Schwelle_senken", "Ri6_Riechen_Schwelle_heben", "Ri7_Riechen_Quelle_orten", "Ri8_Riechen_Richtung_bestimmen", "Ri9_Riechen_Intensitaet_messen", "Ri10_Riechen_Muster_erkennen", "Ri11_Riechen_Reiz_vergleichen", "Ri12_Riechen_Reiz_speichern", "Ri13_Riechen_Reiz_wiederholen", "Ri14_Riechen_Reiz_ausblenden", "Ri15_Riechen_Fokus_nah", "Ri16_Riechen_Fokus_fern", "Ri17_Riechen_Aenderung_erkennen", "Ri18_Riechen_Korrelation_bilden", "Ri19_Riechen_Reiz_zuordnen", "Ri20_Riechen_Reiz_melden",
+    "Ri21_Schmecken_Reiz_aufnehmen", "Ri22_Schmecken_Reiz_verstaerken", "Ri23_Schmecken_Reiz_daempfen", "Ri24_Schmecken_Reiz_filtern", "Ri25_Schmecken_Schwelle_senken", "Ri26_Schmecken_Schwelle_heben", "Ri27_Schmecken_Quelle_orten", "Ri28_Schmecken_Richtung_bestimmen", "Ri29_Schmecken_Intensitaet_messen", "Ri30_Schmecken_Muster_erkennen", "Ri31_Schmecken_Reiz_vergleichen", "Ri32_Schmecken_Reiz_speichern", "Ri33_Schmecken_Reiz_wiederholen", "Ri34_Schmecken_Reiz_ausblenden", "Ri35_Schmecken_Fokus_nah", "Ri36_Schmecken_Fokus_fern", "Ri37_Schmecken_Aenderung_erkennen", "Ri38_Schmecken_Korrelation_bilden", "Ri39_Schmecken_Reiz_zuordnen", "Ri40_Schmecken_Reiz_melden",
+    "Ri41_Tasten_Reiz_aufnehmen", "Ri42_Tasten_Reiz_verstaerken", "Ri43_Tasten_Reiz_daempfen", "Ri44_Tasten_Reiz_filtern", "Ri45_Tasten_Schwelle_senken", "Ri46_Tasten_Schwelle_heben", "Ri47_Tasten_Quelle_orten", "Ri48_Tasten_Richtung_bestimmen", "Ri49_Tasten_Intensitaet_messen", "Ri50_Tasten_Muster_erkennen", "Ri51_Tasten_Reiz_vergleichen", "Ri52_Tasten_Reiz_speichern", "Ri53_Tasten_Reiz_wiederholen", "Ri54_Tasten_Reiz_ausblenden", "Ri55_Tasten_Fokus_nah", "Ri56_Tasten_Fokus_fern", "Ri57_Tasten_Aenderung_erkennen", "Ri58_Tasten_Korrelation_bilden", "Ri59_Tasten_Reiz_zuordnen", "Ri60_Tasten_Reiz_melden",
+    "Ri61_Hoeren_Reiz_aufnehmen", "Ri62_Hoeren_Reiz_verstaerken", "Ri63_Hoeren_Reiz_daempfen", "Ri64_Hoeren_Reiz_filtern", "Ri65_Hoeren_Schwelle_senken", "Ri66_Hoeren_Schwelle_heben", "Ri67_Hoeren_Quelle_orten", "Ri68_Hoeren_Richtung_bestimmen", "Ri69_Hoeren_Intensitaet_messen", "Ri70_Hoeren_Muster_erkennen", "Ri71_Hoeren_Reiz_vergleichen", "Ri72_Hoeren_Reiz_speichern", "Ri73_Hoeren_Reiz_wiederholen", "Ri74_Hoeren_Reiz_ausblenden", "Ri75_Hoeren_Fokus_nah", "Ri76_Hoeren_Fokus_fern", "Ri77_Hoeren_Aenderung_erkennen", "Ri78_Hoeren_Korrelation_bilden", "Ri79_Hoeren_Reiz_zuordnen", "Ri80_Hoeren_Reiz_melden",
+    "Ri81_Sehen_Reiz_aufnehmen", "Ri82_Sehen_Reiz_verstaerken", "Ri83_Sehen_Reiz_daempfen", "Ri84_Sehen_Reiz_filtern", "Ri85_Sehen_Schwelle_senken", "Ri86_Sehen_Schwelle_heben", "Ri87_Sehen_Quelle_orten", "Ri88_Sehen_Richtung_bestimmen", "Ri89_Sehen_Intensitaet_messen", "Ri90_Sehen_Muster_erkennen", "Ri91_Sehen_Reiz_vergleichen", "Ri92_Sehen_Reiz_speichern", "Ri93_Sehen_Reiz_wiederholen", "Ri94_Sehen_Reiz_ausblenden", "Ri95_Sehen_Fokus_nah", "Ri96_Sehen_Fokus_fern", "Ri97_Sehen_Aenderung_erkennen", "Ri98_Sehen_Korrelation_bilden", "Ri99_Sehen_Reiz_zuordnen", "Ri100_Sehen_Reiz_melden"
+  ],
+  "Re": [
+    "Re1_Tuer_beruehren_wollen_entladen_Frontallappen", "Re2_Tuer_beruehren_wollen_entladen_Parietallappen", "Re3_Tuer_beruehren_wollen_entladen_Temporallappen", "Re4_Tuer_beruehren_wollen_entladen_Okzipitallappen", "Re5_Tuer_beruehren_wollen_entladen_Kleinhirn",
+    "Re6_Tisch_beruehren_wollen_entladen_Frontallappen", "Re7_Tisch_beruehren_wollen_entladen_Parietallappen", "Re8_Tisch_beruehren_wollen_entladen_Temporallappen", "Re9_Tisch_beruehren_wollen_entladen_Okzipitallappen", "Re10_Tisch_beruehren_wollen_entladen_Kleinhirn",
+    "Re11_Stuhl_beruehren_wollen_entladen_Frontallappen", "Re12_Stuhl_beruehren_wollen_entladen_Parietallappen", "Re13_Stuhl_beruehren_wollen_entladen_Temporallappen", "Re14_Stuhl_beruehren_wollen_entladen_Okzipitallappen", "Re15_Stuhl_beruehren_wollen_entladen_Kleinhirn",
+    "Re16_Tasse_beruehren_wollen_entladen_Frontallappen", "Re17_Tasse_beruehren_wollen_entladen_Parietallappen", "Re18_Tasse_beruehren_wollen_entladen_Temporallappen", "Re19_Tasse_beruehren_wollen_entladen_Okzipitallappen", "Re20_Tasse_beruehren_wollen_entladen_Kleinhirn",
+    "Re21_Handy_beruehren_wollen_entladen_Frontallappen", "Re22_Handy_beruehren_wollen_entladen_Parietallappen", "Re23_Handy_beruehren_wollen_entladen_Temporallappen", "Re24_Handy_beruehren_wollen_entladen_Okzipitallappen", "Re25_Handy_beruehren_wollen_entladen_Kleinhirn",
+    "Re26_Schluessel_beruehren_wollen_entladen_Frontallappen", "Re27_Schluessel_beruehren_wollen_entladen_Parietallappen", "Re28_Schluessel_beruehren_wollen_entladen_Temporallappen", "Re29_Schluessel_beruehren_wollen_entladen_Okzipitallappen", "Re30_Schluessel_beruehren_wollen_entladen_Kleinhirn",
+    "Re31_Buch_beruehren_wollen_entladen_Frontallappen", "Re32_Buch_beruehren_wollen_entladen_Parietallappen", "Re33_Buch_beruehren_wollen_entladen_Temporallappen", "Re34_Buch_beruehren_wollen_entladen_Okzipitallappen", "Re35_Buch_beruehren_wollen_entladen_Kleinhirn",
+    "Re36_Stift_beruehren_wollen_entladen_Frontallappen", "Re37_Stift_beruehren_wollen_entladen_Parietallappen", "Re38_Stift_beruehren_wollen_entladen_Temporallappen", "Re39_Stift_beruehren_wollen_entladen_Okzipitallappen", "Re40_Stift_beruehren_wollen_entladen_Kleinhirn",
+    "Re41_Auto_beruehren_wollen_entladen_Frontallappen", "Re42_Auto_beruehren_wollen_entladen_Parietallappen", "Re43_Auto_beruehren_wollen_entladen_Temporallappen", "Re44_Auto_beruehren_wollen_entladen_Okzipitallappen", "Re45_Auto_beruehren_wollen_entladen_Kleinhirn",
+    "Re46_Ampel_beruehren_wollen_entladen_Frontallappen", "Re47_Ampel_beruehren_wollen_entladen_Parietallappen", "Re48_Ampel_beruehren_wollen_entladen_Temporallappen", "Re49_Ampel_beruehren_wollen_entladen_Okzipitallappen", "Re50_Ampel_beruehren_wollen_entladen_Kleinhirn",
+    "Re51_Wegweiser_beruehren_wollen_entladen_Frontallappen", "Re52_Wegweiser_beruehren_wollen_entladen_Parietallappen", "Re53_Wegweiser_beruehren_wollen_entladen_Temporallappen", "Re54_Wegweiser_beruehren_wollen_entladen_Okzipitallappen", "Re55_Wegweiser_beruehren_wollen_entladen_Kleinhirn",
+    "Re56_Ball_beruehren_wollen_entladen_Frontallappen", "Re57_Ball_beruehren_wollen_entladen_Parietallappen", "Re58_Ball_beruehren_wollen_entladen_Temporallappen", "Re59_Ball_beruehren_wollen_entladen_Okzipitallappen", "Re60_Ball_beruehren_wollen_entladen_Kleinhirn",
+    "Re61_Fenster_beruehren_wollen_entladen_Frontallappen", "Re62_Fenster_beruehren_wollen_entladen_Parietallappen", "Re63_Fenster_beruehren_wollen_entladen_Temporallappen", "Re64_Fenster_beruehren_wollen_entladen_Okzipitallappen", "Re65_Fenster_beruehren_wollen_entladen_Kleinhirn",
+    "Re66_Lichtschalter_beruehren_wollen_entladen_Frontallappen", "Re67_Lichtschalter_beruehren_wollen_entladen_Parietallappen", "Re68_Lichtschalter_beruehren_wollen_entladen_Temporallappen", "Re69_Lichtschalter_beruehren_wollen_entladen_Okzipitallappen", "Re70_Lichtschalter_beruehren_wollen_entladen_Kleinhirn",
+    "Re71_Tasche_beruehren_wollen_entladen_Frontallappen", "Re72_Tasche_beruehren_wollen_entladen_Parietallappen", "Re73_Tasche_beruehren_wollen_entladen_Temporallappen", "Re74_Tasche_beruehren_wollen_entladen_Okzipitallappen", "Re75_Tasche_beruehren_wollen_entladen_Kleinhirn",
+    "Re76_Laptop_beruehren_wollen_entladen_Frontallappen", "Re77_Laptop_beruehren_wollen_entladen_Parietallappen", "Re78_Laptop_beruehren_wollen_entladen_Temporallappen", "Re79_Laptop_beruehren_wollen_entladen_Okzipitallappen", "Re80_Laptop_beruehren_wollen_entladen_Kleinhirn",
+    "Re81_Sofa_beruehren_wollen_entladen_Frontallappen", "Re82_Sofa_beruehren_wollen_entladen_Parietallappen", "Re83_Sofa_beruehren_wollen_entladen_Temporallappen", "Re84_Sofa_beruehren_wollen_entladen_Okzipitallappen", "Re85_Sofa_beruehren_wollen_entladen_Kleinhirn",
+    "Re86_Lenkrad_beruehren_wollen_entladen_Frontallappen", "Re87_Lenkrad_beruehren_wollen_entladen_Parietallappen", "Re88_Lenkrad_beruehren_wollen_entladen_Temporallappen", "Re89_Lenkrad_beruehren_wollen_entladen_Okzipitallappen", "Re90_Lenkrad_beruehren_wollen_entladen_Kleinhirn",
+    "Re91_Treppe_beruehren_wollen_entladen_Frontallappen", "Re92_Treppe_beruehren_wollen_entladen_Parietallappen", "Re93_Treppe_beruehren_wollen_entladen_Temporallappen", "Re94_Treppe_beruehren_wollen_entladen_Okzipitallappen", "Re95_Treppe_beruehren_wollen_entladen_Kleinhirn",
+    "Re96_Baum_beruehren_wollen_entladen_Frontallappen", "Re97_Baum_beruehren_wollen_entladen_Parietallappen", "Re98_Baum_beruehren_wollen_entladen_Temporallappen", "Re99_Baum_beruehren_wollen_entladen_Okzipitallappen", "Re100_Baum_beruehren_wollen_entladen_Kleinhirn"
+  ]
+};
+
+const C = [0xe0243a, 0xf4f4f4, 0xffd93b, 0x3ddc6a];
+const CSS_C = ['#e0243a', '#f4f4f4', '#ffd93b', '#3ddc6a'];
+const N = ['Ro', 'Ra', 'Ri', 'Re'];
+
+// UI Setup & Steuerung
+let selectedOp = 'Ro';
+let autoMode = true;
+let execCount = 0;
+const cmdSelect = document.getElementById('cmd-select');
+const activeCmdEl = document.getElementById('active-cmd');
+const activeDescEl = document.getElementById('active-desc');
+const logListEl = document.getElementById('log-list');
+const execCountEl = document.getElementById('exec-count');
+const hud = document.getElementById('s');
+
+function populateSelect(op) {
+  cmdSelect.innerHTML = '';
+  CMDS[op].forEach((c, idx) => {
+    const opt = document.createElement('option');
+    opt.value = idx;
+    opt.textContent = c;
+    cmdSelect.appendChild(opt);
+  });
+}
+populateSelect('Ro');
+
+document.querySelectorAll('.tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(b => b.classList.remove('sel'));
+    btn.classList.add('sel');
+    selectedOp = btn.dataset.op;
+    populateSelect(selectedOp);
+  });
+});
+
+document.getElementById('btn-auto').addEventListener('click', (e) => {
+  autoMode = !autoMode;
+  e.target.textContent = autoMode ? 'Auto: AN' : 'Auto: AUS';
+  e.target.classList.toggle('active', autoMode);
+});
+
+// Three.js 3D-Szene initialisieren
+const sc = new THREE.Scene();
+sc.background = new THREE.Color(0x06121c);
+sc.fog = new THREE.Fog(0x06121c, 26, 56);
+const cam = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
+const R = new THREE.WebGLRenderer({ antialias: true });
+R.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+document.body.appendChild(R.domElement);
+
+function fit() {
+  R.setSize(innerWidth, innerHeight);
+  cam.aspect = innerWidth / innerHeight;
+  cam.updateProjectionMatrix();
+}
+addEventListener('resize', fit);
+fit();
+
+sc.add(new THREE.AmbientLight(0x6f8fa8, 0.75));
+const dl = new THREE.DirectionalLight(0xffffff, 0.95);
+dl.position.set(6, 12, 8);
+sc.add(dl);
+
+// Ozean
+const og = new THREE.PlaneGeometry(46, 46, 60, 60);
+og.rotateX(-Math.PI / 2);
+sc.add(new THREE.Mesh(og, new THREE.MeshPhongMaterial({ color: 0x0d4468, shininess: 60, flatShading: true })));
+const op = og.attributes.position;
+
+// ri_Senke (X=7, Z=-3)
+const SX = 7, SZ = -3;
+const senkeMat = new THREE.MeshPhongMaterial({ color: 0x222a30, emissive: 0x000000 });
+const senke = new THREE.Group();
+senke.position.set(SX, 0, SZ);
+sc.add(senke);
+const pil = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.5, 2.4, 16), senkeMat);
+pil.position.y = 1.2;
+senke.add(pil);
+const ring = new THREE.Mesh(new THREE.TorusGeometry(0.8, 0.08, 8, 32), senkeMat);
+ring.rotation.x = Math.PI / 2;
+ring.position.y = 2.5;
+senke.add(ring);
+
+// Insel (X=3.5, Z=2) & Re-Zielobjekt
+const PX = 3.5, PZ = 2;
+const isl = new THREE.Mesh(new THREE.CylinderGeometry(3.4, 3.6, 0.4, 40), new THREE.MeshPhongMaterial({ color: 0x2c3a44 }));
+isl.position.set(PX, 0.05, PZ);
+sc.add(isl);
+
+const targetObjMat = new THREE.MeshPhongMaterial({ color: 0x3ddc6a, emissive: 0x10381c });
+const targetObj = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.45, 0.45), targetObjMat);
+targetObj.position.set(PX + 1.4, 0.48, PZ - 1.2);
+sc.add(targetObj);
+
+// Artikulierte ri_Person
+const person = new THREE.Group();
+sc.add(person);
+const pm = new THREE.MeshPhongMaterial({ color: 0xd8dde0 });
+const jointMat = new THREE.MeshPhongMaterial({ color: 0x9aa6ad });
+
+const torso = new THREE.Group();
+torso.position.y = 0.72;
+person.add(torso);
+const bodyMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 0.65, 12), pm);
+torso.add(bodyMesh);
+
+const headGroup = new THREE.Group();
+headGroup.position.y = 0.46;
+torso.add(headGroup);
+const headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.18, 16, 12), pm);
+headGroup.add(headMesh);
+const nose = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.14), new THREE.MeshPhongMaterial({ color: 0x888888 }));
+nose.position.set(0, 0, 0.19);
+headGroup.add(nose);
+
+// Gehirn-Aura (Ra-Lappen & Re-Entladung)
+const brainAuraMat = new THREE.MeshBasicMaterial({ color: 0xf4f4f4, transparent: true, opacity: 0.0, wireframe: true });
+const brainAura = new THREE.Mesh(new THREE.SphereGeometry(0.28, 12, 10), brainAuraMat);
+headGroup.add(brainAura);
+
+// Sensor-Ring (Ri-Sinnesreize)
+const senseRingMat = new THREE.MeshBasicMaterial({ color: 0xffd93b, transparent: true, opacity: 0.0, side: THREE.DoubleSide });
+const senseRing = new THREE.Mesh(new THREE.RingGeometry(0.26, 0.36, 24), senseRingMat);
+senseRing.rotation.x = Math.PI / 2;
+headGroup.add(senseRing);
+
+// Gliedmaßen (Arme & Beine)
+function mkLimb(x, y, len) {
+  const g = new THREE.Group();
+  g.position.set(x, y, 0);
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.05, len, 8), jointMat);
+  m.position.y = -len / 2;
+  g.add(m);
+  return g;
+}
+const armL = mkLimb(0.25, 0.28, 0.5);
+const armR = mkLimb(-0.25, 0.28, 0.5);
+torso.add(armL, armR);
+
+const legL = mkLimb(0.1, 0.42, 0.42);
+const legR = mkLimb(-0.1, 0.42, 0.42);
+person.add(legL, legR);
+
+// Operator-Platte über dem Kopf
+const plateMat = new THREE.MeshBasicMaterial({ color: C[0], side: THREE.DoubleSide });
+const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.95, 0.95), plateMat);
+plate.rotation.x = -Math.PI / 2;
+plate.position.y = 1.75;
+person.add(plate);
+
+// Schwebendes Text-Banner über der ri_Person
+const cmdCanvas = document.createElement('canvas');
+cmdCanvas.width = 1024;
+cmdCanvas.height = 128;
+const cmdCtx = cmdCanvas.getContext('2d');
+const cmdTex = new THREE.CanvasTexture(cmdCanvas);
+const cmdSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: cmdTex, transparent: true }));
+cmdSprite.scale.set(4.8, 0.6, 1);
+cmdSprite.position.y = 2.25;
+person.add(cmdSprite);
+
+function updateSprite(text, cssColor) {
+  cmdCtx.clearRect(0, 0, 1024, 128);
+  cmdCtx.fillStyle = 'rgba(6, 18, 28, 0.82)';
+  cmdCtx.beginPath();
+  if (cmdCtx.roundRect) {
+    cmdCtx.roundRect(40, 18, 944, 92, 16);
+  } else {
+    cmdCtx.rect(40, 18, 944, 92);
+  }
+  cmdCtx.fill();
+  cmdCtx.strokeStyle = cssColor;
+  cmdCtx.lineWidth = 4;
+  cmdCtx.stroke();
+  cmdCtx.fillStyle = '#ffffff';
+  cmdCtx.font = 'bold 34px "Courier New", monospace';
+  cmdCtx.textAlign = 'center';
+  cmdCtx.textBaseline = 'middle';
+  cmdCtx.fillText(text, 512, 64);
+  cmdTex.needsUpdate = true;
+}
+updateSprite('Bereit für Gedankenkommandos', '#e0243a');
+
+person.position.set(PX, 0.25, PZ);
+let h = 0, ht = 0, px = PX, pz = PZ, turns = 0, shake = 0;
+let t = 0;
+
+// Aktiver Zustand für Kinematik & Kognition der ri_Person
+let activeState = {
+  op: 'Ro',
+  cmd: '',
+  timer: 0,
+  headRotX: 0, headRotY: 0, headPosZ: 0, headPosY: 0.46,
+  torsoRotX: 0, torsoRotY: 0, torsoPosY: 0.72,
+  armLRotX: 0, armLRotZ: 0,
+  armRRotX: 0, armRRotZ: 0,
+  legLRotX: 0, legRRotX: 0,
+  moveSpeed: 0.9,
+  reachTarget: false
+};
+
+function applyCommand(opIdx, cmdText) {
+  const op = N[opIdx];
+  const cssCol = CSS_C[opIdx];
+  activeState.op = op;
+  activeState.cmd = cmdText;
+  activeState.timer = 2.6;
+
+  // Reset zielgerichtete Posen
+  activeState.headRotX = 0; activeState.headRotY = 0;
+  activeState.headPosZ = 0; activeState.headPosY = 0.46;
+  activeState.torsoRotX = 0; activeState.torsoRotY = 0; activeState.torsoPosY = 0.72;
+  activeState.armLRotX = 0; activeState.armLRotZ = 0;
+  activeState.armRRotX = 0; activeState.armRRotZ = 0;
+  activeState.legLRotX = 0; activeState.legRRotX = 0;
+  activeState.moveSpeed = 0.75;
+  activeState.reachTarget = false;
+
+  let desc = '';
+
+  if (op === 'Ro') {
+    const isLeft = cmdText.includes('_links');
+    const isRight = cmdText.includes('_rechts');
+    const isVor = cmdText.includes('_vor');
+    const isZurueck = cmdText.includes('_zurueck');
+    const isHoch = cmdText.includes('_hoch');
+    const isRunter = cmdText.includes('_runter');
+    const isBeugen = cmdText.includes('_Beugen');
+    const isStrecken = cmdText.includes('_Strecken');
+    const isStopp = cmdText.includes('_Stopp');
+
+    if (isStopp) activeState.moveSpeed = 0;
+    if (isVor) activeState.moveSpeed = 1.45;
+    if (isZurueck) activeState.moveSpeed = -0.8;
+
+    if (cmdText.includes('Kopf')) {
+      if (isLeft) activeState.headRotY = 0.75;
+      if (isRight) activeState.headRotY = -0.75;
+      if (isVor) activeState.headPosZ = 0.14;
+      if (isZurueck) activeState.headPosZ = -0.12;
+      if (isHoch) activeState.headPosY = 0.56;
+      if (isRunter) activeState.headPosY = 0.38;
+      if (isBeugen) activeState.headRotX = 0.55;
+      if (isStrecken) activeState.headRotX = -0.45;
+      desc = 'Ro-Motorik: Kopf-Kinematik wird auf ri_Person ausgeführt';
+    } else if (cmdText.includes('Rumpf')) {
+      if (isLeft) activeState.torsoRotY = 0.6;
+      if (isRight) activeState.torsoRotY = -0.6;
+      if (isHoch) activeState.torsoPosY = 0.84;
+      if (isRunter) activeState.torsoPosY = 0.58;
+      if (isBeugen) activeState.torsoRotX = 0.5;
+      if (isStrecken) activeState.torsoRotX = -0.35;
+      desc = 'Ro-Motorik: Rumpf-Translation/Rotation ausgeführt';
+    } else if (cmdText.includes('Arm') || cmdText.includes('Hand') || cmdText.includes('Schulter')) {
+      const lift = isHoch || isStrecken ? -2.2 : (isVor ? -1.4 : (isBeugen ? -1.1 : -0.5));
+      const side = isLeft ? 0.6 : (isRight ? -0.6 : 0);
+      if (isLeft) { activeState.armLRotX = lift; activeState.armLRotZ = side; }
+      else { activeState.armRRotX = lift; activeState.armRRotZ = side; }
+      desc = 'Ro-Motorik: Obere Extremität führt Bewegung aus';
+    } else if (cmdText.includes('Bein')) {
+      const kick = isVor || isStrecken ? -0.85 : (isZurueck ? 0.65 : (isHoch ? -1.1 : -0.4));
+      if (isLeft) activeState.legLRotX = kick;
+      else activeState.legRRotX = kick;
+      desc = 'Ro-Motorik: Bein-Kinematik aktiviert';
+    }
+    ht += isLeft ? 0.5 : (isRight ? -0.5 : Math.PI * 0.25);
+  } else if (op === 'Ra') {
+    brainAuraMat.color.setHex(0xf4f4f4);
+    brainAuraMat.opacity = 0.85;
+    if (cmdText.includes('Richtungswechsel')) {
+      ht += Math.PI;
+      turns++;
+      desc = 'Ra-Kognition: Richtungswechsel gedacht → Kurs um 180° gedreht';
+    } else if (cmdText.includes('Raum_vorstellen') || cmdText.includes('Bewegung_koordinieren')) {
+      activeState.headRotY = 0.5;
+      activeState.armRRotX = -0.9;
+      desc = 'Ra-Kognition: Räumliche Koordination im Lappen aktiv';
+    } else if (cmdText.includes('Gedanken_loeschen')) {
+      brainAuraMat.opacity = 0.15;
+      activeState.moveSpeed = 0.2;
+      desc = 'Ra-Kognition: Gedankenspeicher geleert';
+    } else {
+      activeState.armRRotX = -1.6;
+      activeState.headRotX = 0.25;
+      desc = 'Ra-Kognition: Aktive Verarbeitung im ' + cmdText.split('_')[1];
+    }
+  } else if (op === 'Ri') {
+    senseRingMat.color.setHex(0xffd93b);
+    senseRingMat.opacity = 0.9;
+    activeState.headRotY = Math.sin(t * 3) * 0.6;
+    if (cmdText.includes('Quelle_orten') || cmdText.includes('Richtung_bestimmen')) {
+      ht = Math.atan2(SX - px, SZ - pz);
+      desc = 'Ri-Sensorik: Reizquelle (ri_Senke) geortet und anvisiert';
+    } else if (cmdText.includes('Fokus_fern')) {
+      activeState.headPosZ = 0.15;
+      activeState.headRotX = -0.2;
+      desc = 'Ri-Sensorik: Fernfokus auf Horizont/Quader ausgerichtet';
+    } else if (cmdText.includes('Fokus_nah')) {
+      activeState.headRotX = 0.4;
+      desc = 'Ri-Sensorik: Nahfokus auf unmittelbare Umgebung';
+    } else {
+      desc = 'Ri-Sensorik: ' + cmdText.split('_')[1] + '-Reiz wird korreliert';
+    }
+  } else if (op === 'Re') {
+    const objName = cmdText.split('_')[1] || 'Objekt';
+    const lobeName = cmdText.split('_').pop() || 'Lappen';
+    activeState.reachTarget = true;
+    activeState.armRRotX = -1.35;
+    activeState.armLRotX = -0.7;
+    ht = Math.atan2(targetObj.position.x - px, targetObj.position.z - pz);
+    targetObjMat.emissive.setHex(0x3ddc6a);
+    targetObjMat.emissiveIntensity = 1.2;
+    brainAuraMat.color.setHex(0x3ddc6a);
+    brainAuraMat.opacity = 0.75;
+    desc = `Re-Entladung: "${objName}" berühren wollen → Entladung im ${lobeName}`;
+  }
+
+  activeCmdEl.textContent = cmdText;
+  activeCmdEl.style.borderLeftColor = cssCol;
+  activeDescEl.textContent = desc;
+  updateSprite(cmdText, cssCol);
+
+  execCount++;
+  execCountEl.textContent = execCount;
+  const item = document.createElement('div');
+  item.className = 'log-item';
+  item.innerHTML = `<span class="dot" style="background:${cssCol}"></span><span>#${execCount}: ${cmdText}</span>`;
+  logListEl.prepend(item);
+  if (logListEl.children.length > 30) {
+    logListEl.removeChild(logListEl.lastChild);
+  }
+}
+
+// Re_Quaderstrukturen (QA, QB, QC mit je vier Tentakeln)
+function mkQ() {
+  const Q = new THREE.Group();
+  sc.add(Q);
+  Q.add(new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.8, 1.2), new THREE.MeshPhongMaterial({ color: 0x1a1d22, emissive: 0x2a0a10 })));
+  const tents = [];
+  [[1, 1], [1, -1], [-1, 1], [-1, -1]].forEach((s, k) => {
+    const mat = new THREE.MeshPhongMaterial({ color: C[k], emissive: C[k], emissiveIntensity: 0.25 });
+    const root = new THREE.Group();
+    root.position.set(s[0] * 0.7, -0.4, s[1] * 0.5);
+    root.rotation.z = s[0] * 0.6;
+    root.rotation.x = -s[1] * 0.5;
+    Q.add(root);
+    let p = root;
+    const segs = [];
+    for (let i = 0; i < 6; i++) {
+      const j = new THREE.Group();
+      p.add(j);
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(0.06 - i * 0.007, 0.08 - i * 0.008, 0.5, 6), mat);
+      m.position.y = -0.25;
+      j.add(m);
+      const n = new THREE.Group();
+      n.position.y = -0.5;
+      j.add(n);
+      segs.push(j);
+      p = n;
+    }
+    tents.push(segs);
+  });
+  return { Q: Q, tents: tents };
+}
+const QA = mkQ(), QB = mkQ(), QC = mkQ();
+
+// Ri-Relationslinien (gelbes Netzwerk)
+const rg = new THREE.BufferGeometry();
+rg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(7 * 6), 3));
+const rl = new THREE.LineSegments(rg, new THREE.LineBasicMaterial({ color: 0xffd93b, transparent: true, opacity: 0.3 }));
+rl.frustumCulled = false;
+sc.add(rl);
+
+// Vibrationen, Ringe & Tentakel-Links
+const pulses = [], rings = [], links = [];
+let nextPulse = 0.8, pk = 0, ti = -99, flash = 0, flashCol = C[0];
+
+function sendPulse(opIdx, customCmd) {
+  const col = C[opIdx];
+  const src = [QA, QB, QC][pk % 3];
+  const m = new THREE.Mesh(new THREE.SphereGeometry(0.26, 16, 12), new THREE.MeshBasicMaterial({ color: col }));
+  m.position.copy(src.Q.position);
+  sc.add(m);
+  const cmdList = CMDS[N[opIdx]];
+  const cmdText = customCmd || cmdList[Math.floor(pk / 4) % cmdList.length];
+  pulses.push({ m: m, k: opIdx, col: col, src: src, cmd: cmdText });
+  pk++;
+}
+
+document.getElementById('btn-exec').addEventListener('click', () => {
+  const opIdx = N.indexOf(selectedOp);
+  const cmdIdx = parseInt(cmdSelect.value, 10) || 0;
+  const cmdText = CMDS[selectedOp][cmdIdx];
+  sendPulse(opIdx, cmdText);
+});
+
+function mkLink(src, col) {
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1, 6), new THREE.MeshBasicMaterial({ color: col, transparent: true }));
+  sc.add(m);
+  links.push({ m: m, src: src, a: 0 });
+}
+
+function impact(col, k, src, cmdText) {
+  ti = t;
+  flash = 1;
+  flashCol = col;
+  mkLink(src, col);
+  const rm = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.05, 48), new THREE.MeshBasicMaterial({ color: col, transparent: true, side: THREE.DoubleSide }));
+  rm.rotation.x = -Math.PI / 2;
+  rm.position.set(SX, 0.08, SZ);
+  sc.add(rm);
+  rings.push({ m: rm, a: 0 });
+
+  shake = 1;
+  plateMat.color.setHex(col);
+  hud.textContent = `Vibration ${N[k]} trifft ri_Senke → Gedankenkommando wird ausgeführt`;
+  applyCommand(k, cmdText);
+}
+
+// Kamera-Interaktion (Maus & Touch)
+let az = 0.5, drag = false, lx = 0;
+R.domElement.addEventListener('pointerdown', e => { drag = true; lx = e.clientX; });
+addEventListener('pointerup', () => drag = false);
+addEventListener('pointermove', e => { if (drag) { az += (e.clientX - lx) * 0.006; lx = e.clientX; } });
+
+const clock = new THREE.Clock();
+function wrap(a) {
+  while (a > Math.PI) a -= 2 * Math.PI;
+  while (a < -Math.PI) a += 2 * Math.PI;
+  return a;
+}
+
+function loop() {
+  const dt = Math.min(clock.getDelta(), 0.05);
+  t += dt;
+
+  // Ozean-Wellen & Impulswellen um ri_Senke
+  for (let i = 0; i < op.count; i++) {
+    const x = op.getX(i), z = op.getZ(i);
+    let y = Math.sin(x * 0.5 + t) * 0.22 + Math.cos(z * 0.4 + t * 0.8) * 0.18;
+    const age = t - ti;
+    if (age < 6) {
+      const d = Math.hypot(x - SX, z - SZ) - age * 5;
+      y += Math.exp(-d * d * 0.15) * Math.sin(d * 2) * 0.7 * Math.exp(-age * 0.5);
+    }
+    op.setY(i, y);
+  }
+  op.needsUpdate = true;
+
+  // Quader auf Umlaufbahn
+  [QA, QB, QC].forEach((o, n) => {
+    const a = t * 0.18 + n * 2 * Math.PI / 3;
+    o.Q.position.set(10 * Math.cos(a), 2.3 + Math.sin(t * 1.3 + n * 2) * 0.25, 7 * Math.sin(a) - 1);
+    o.Q.rotation.y = -a + Math.PI / 2;
+    o.Q.rotation.z = Math.sin(t * 0.9 + n) * 0.06;
+    o.tents.forEach((segs, k) => segs.forEach((s, i) => {
+      s.rotation.z = Math.sin(t * 2 + i * 0.6 + k * 1.3) * 0.3;
+      s.rotation.x = Math.cos(t * 1.7 + i * 0.5 + k) * 0.25;
+    }));
+  });
+
+  // Automatischen Impuls aussenden
+  if (autoMode && t > nextPulse) {
+    nextPulse = t + 2.6;
+    sendPulse(pk % 4, null);
+  }
+
+  const tgt = new THREE.Vector3(SX, 2.5, SZ);
+  for (let i = pulses.length - 1; i >= 0; i--) {
+    const p = pulses[i], d = tgt.clone().sub(p.m.position), L = d.length();
+    if (L < 0.5) {
+      sc.remove(p.m);
+      pulses.splice(i, 1);
+      impact(p.col, p.k, p.src, p.cmd);
+    } else {
+      p.m.position.add(d.normalize().multiplyScalar(Math.min(7.5 * dt, L)));
+      p.m.scale.setScalar(0.85 + 0.25 * Math.sin(t * 20));
+    }
+  }
+
+  // Konzentrische Impulsringe
+  for (let i = rings.length - 1; i >= 0; i--) {
+    const r = rings[i];
+    r.a += dt;
+    r.m.scale.setScalar(1 + r.a * 6);
+    r.m.material.opacity = Math.max(0, 1 - r.a / 1.6);
+    if (r.a > 1.6) {
+      sc.remove(r.m);
+      rings.splice(i, 1);
+    }
+  }
+
+  // Senke & Auren abklingen lassen
+  flash = Math.max(0, flash - dt * 1.2);
+  senkeMat.emissive.setHex(flashCol);
+  senkeMat.emissiveIntensity = flash * 1.4;
+  ring.scale.setScalar(1 + flash * 0.25);
+
+  targetObjMat.emissiveIntensity = Math.max(0.15, targetObjMat.emissiveIntensity - dt * 0.6);
+  targetObj.rotation.y += dt * 0.8;
+  brainAuraMat.opacity = Math.max(0, brainAuraMat.opacity - dt * 0.35);
+  brainAura.rotation.y += dt * 2.5;
+  senseRingMat.opacity = Math.max(0, senseRingMat.opacity - dt * 0.35);
+  senseRing.scale.setScalar(1 + Math.sin(t * 10) * 0.15);
+
+  // ri_Person Bewegung & Gliedmaßen-Animation
+  activeState.timer = Math.max(0, activeState.timer - dt);
+  const dc = Math.hypot(px - PX, pz - PZ);
+  if (dc > 2.4) {
+    ht = Math.atan2(PX - px, PZ - pz) + (Math.random() - 0.5) * 0.5;
+  }
+  h += wrap(ht - h) * Math.min(1, dt * 4.5);
+
+  const spd = activeState.timer > 0 ? activeState.moveSpeed : 0.8;
+  px += Math.sin(h) * spd * dt;
+  pz += Math.cos(h) * spd * dt;
+
+  const walkCycle = Math.abs(spd) > 0.1 ? Math.sin(t * 7) : 0;
+  person.position.set(px, 0.25 + Math.abs(walkCycle) * 0.035, pz);
+  person.rotation.y = h;
+
+  const lerpK = Math.min(1, dt * 6);
+  const tHeadX = activeState.timer > 0 ? activeState.headRotX : 0;
+  const tHeadY = activeState.timer > 0 ? activeState.headRotY : 0;
+  const tHeadZ = activeState.timer > 0 ? activeState.headPosZ : 0;
+  const tHeadPY = activeState.timer > 0 ? activeState.headPosY : 0.46;
+
+  headGroup.rotation.x += (tHeadX - headGroup.rotation.x) * lerpK;
+  headGroup.rotation.y += (tHeadY - headGroup.rotation.y) * lerpK;
+  headGroup.position.z += (tHeadZ - headGroup.position.z) * lerpK;
+  headGroup.position.y += (tHeadPY - headGroup.position.y) * lerpK;
+
+  const tTorsoX = activeState.timer > 0 ? activeState.torsoRotX : 0;
+  const tTorsoY = activeState.timer > 0 ? activeState.torsoRotY : 0;
+  const tTorsoPY = activeState.timer > 0 ? activeState.torsoPosY : 0.72;
+
+  torso.rotation.x += (tTorsoX - torso.rotation.x) * lerpK;
+  torso.rotation.y += (tTorsoY - torso.rotation.y) * lerpK;
+  torso.position.y += (tTorsoPY - torso.position.y) * lerpK;
+
+  const tArmLX = activeState.timer > 0 && activeState.armLRotX !== 0 ? activeState.armLRotX : -walkCycle * 0.35;
+  const tArmRX = activeState.timer > 0 && activeState.armRRotX !== 0 ? activeState.armRRotX : walkCycle * 0.35;
+  armL.rotation.x += (tArmLX - armL.rotation.x) * lerpK;
+  armL.rotation.z += ((activeState.timer > 0 ? activeState.armLRotZ : 0) - armL.rotation.z) * lerpK;
+  armR.rotation.x += (tArmRX - armR.rotation.x) * lerpK;
+  armR.rotation.z += ((activeState.timer > 0 ? activeState.armRRotZ : 0) - armR.rotation.z) * lerpK;
+
+  const tLegLX = activeState.timer > 0 && activeState.legLRotX !== 0 ? activeState.legLRotX : walkCycle * 0.45;
+  const tLegRX = activeState.timer > 0 && activeState.legRRotX !== 0 ? activeState.legRRotX : -walkCycle * 0.45;
+  legL.rotation.x += (tLegLX - legL.rotation.x) * lerpK;
+  legR.rotation.x += (tLegRX - legR.rotation.x) * lerpK;
+
+  shake = Math.max(0, shake - dt * 0.8);
+  plate.position.x = Math.sin(t * 60) * 0.06 * shake;
+  plate.rotation.z = Math.sin(t * 55) * 0.12 * shake;
+
+  // Ri: Relationsschicht aktualisieren
+  {
+    const P = [QA.Q.position, QB.Q.position, QC.Q.position];
+    const S = new THREE.Vector3(SX, 2.5, SZ);
+    const H = new THREE.Vector3(px, 1.55, pz);
+    const E = [[P[0], P[1]], [P[1], P[2]], [P[2], P[0]], [P[0], S], [P[1], S], [P[2], S], [S, H]];
+    const ar = rg.attributes.position.array;
+    E.forEach((e, i) => {
+      ar[i * 6] = e[0].x; ar[i * 6 + 1] = e[0].y; ar[i * 6 + 2] = e[0].z;
+      ar[i * 6 + 3] = e[1].x; ar[i * 6 + 4] = e[1].y; ar[i * 6 + 5] = e[1].z;
+    });
+    rg.attributes.position.needsUpdate = true;
+    rl.material.opacity = 0.25 + flash * 0.6;
+  }
+
+  // Tentakel-Link greift vom Quader zur ri_Person
+  const hp = new THREE.Vector3(px, 1.55, pz);
+  for (let i = links.length - 1; i >= 0; i--) {
+    const l = links[i];
+    l.a += dt;
+    const s = l.src.Q.position;
+    const e = s.clone().lerp(hp, Math.min(1, l.a * 2.5));
+    const d = e.clone().sub(s);
+    const L = Math.max(d.length(), 0.01);
+    l.m.position.copy(s).add(e).multiplyScalar(0.5);
+    const w = 1 + Math.sin(t * 30) * 0.3;
+    l.m.scale.set(w, L, w);
+    l.m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize());
+    l.m.material.opacity = Math.max(0, Math.min(1, (2.2 - l.a) / 0.7));
+    if (l.a > 2.2) {
+      sc.remove(l.m);
+      links.splice(i, 1);
+    }
+  }
+
+  // Kamera-Positionierung
+  if (!drag) az += dt * 0.025;
+  const rad = cam.aspect < 1 ? 24 : 16.5;
+  cam.position.set(rad * Math.sin(az), rad * 0.48, rad * Math.cos(az));
+  cam.lookAt(3.2, 1.1, 0.2);
+
+  R.render(sc, cam);
+  requestAnimationFrame(loop);
+}
+
+window.onload = function () {
+  loop();
+};
+</script>
+</body>
+</html>
+```
